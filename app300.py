@@ -1,45 +1,3 @@
-import streamlit as st
-import numpy as np
-import plotly.graph_objects as go
-from shapely.geometry import Polygon, box
-
-# 1. APP CONFIGURATION
-st.set_page_config(page_title="Solar Canopy Visualizer", layout="wide")
-st.title("☀️ Solar Canopy & Shading Visualizer")
-
-# 2. SIDEBAR
-canopy_depth = st.sidebar.slider("Canopy Depth (meters)", 0.0, 2.0, 1.0, 0.1)
-altitude = st.sidebar.slider("Sun Altitude Angle (°)", 1.0, 90.0, 45.0, 1.0)
-azimuth = st.sidebar.slider("Sun Azimuth Angle (°)", 90.0, 270.0, 180.0, 1.0)
-
-# 3. MATH & PROJECTION
-win_x_min, win_x_max = -1.5, 1.5
-win_z_min, win_z_max = 1.0, 3.0
-window_area = (win_x_max - win_x_min) * (win_z_max - win_z_min)
-alt_rad, az_rad = np.radians(altitude), np.radians(azimuth)
-
-# Sun vector: pointing from the sun towards the wall
-sun_vector = np.array([-np.sin(az_rad) * np.cos(alt_rad), -np.cos(az_rad) * np.cos(alt_rad), -np.sin(alt_rad)])
-
-if sun_vector[1] < 0.001:
-    shading_pct, shadow_poly_coords = 0.0, None
-else:
-    canopy_z = 3.0
-    c1 = np.array([-2.0, -canopy_depth, canopy_z])
-    c2 = np.array([2.0, -canopy_depth, canopy_z])
-    c3 = np.array([2.0, 0.0, canopy_z])
-    c4 = np.array([-2.0, 0.0, canopy_z])
-    
-    def project(p): 
-        return p + (-p[1] / sun_vector[1]) * sun_vector
-
-    p = [project(c1), project(c2), project(c3), project(c4)]
-    shadow_poly = Polygon([(pt[0], pt[2]) for pt in p])
-    inter = shadow_poly.intersection(box(win_x_min, win_z_min, win_x_max, win_z_max))
-    
-    shading_pct = (inter.area / window_area) * 100 if not inter.is_empty else 0.0
-    shadow_poly_coords = list(inter.exterior.coords) if not inter.is_empty and inter.geom_type == 'Polygon' else None
-
 # 4. DISPLAY
 c1, c2, c3 = st.columns(3)
 c1.metric("Window Shaded", f"{shading_pct:.1f}%")
@@ -55,18 +13,18 @@ fig.add_trace(go.Mesh3d(x=[win_x_min, win_x_max, win_x_max, win_x_min], y=[0, 0,
 # Canopy
 fig.add_trace(go.Mesh3d(x=[-2, 2, 2, -2], y=[0, 0, -canopy_depth, -canopy_depth], z=[3, 3, 3, 3], color='dimgrey', name="Canopy"))
 
-# FIXED: Drawing the shadow using Scatter3d with fill='toself'
+# FIXED: Drawing the shadow using Scatter3d with surfaceaxis=1
 if shadow_poly_coords:
     sx = [pt[0] for pt in shadow_poly_coords]
     sz = [pt[1] for pt in shadow_poly_coords]
-    sy = [0.01] * len(sx)  # Offset slightly off the wall (0.01) to prevent z-fighting visual glitches
+    sy = [-0.01] * len(sx)  # Offset slightly in front of the wall to avoid visual clipping
     
     fig.add_trace(go.Scatter3d(
         x=sx, y=sy, z=sz,
         mode='lines',
-        fill='toself',
-        fillcolor='rgba(10, 30, 80, 0.6)',
-        line=dict(color='rgba(10, 30, 80, 0.8)', width=2),
+        surfaceaxis=1,                  # 1 means fill perpendicular to the Y-axis
+        surfacecolor='rgba(10,30,80,0.6)', # Sets the filled face color
+        line=dict(color='rgba(10,30,80,0.9)', width=3),
         name="Shadow"
     ))
 
