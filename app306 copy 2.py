@@ -100,7 +100,13 @@ def run_annual_simulation(lat, lon, w_width, w_height, c_width, c_depth, shgc_va
             
         relative_azimuth = az - (wall_ori - 180)
         alt_rad, az_rad = np.radians(alt), np.radians(relative_azimuth)
-        sun_vector = np.array([-np.sin(az_rad) * np.cos(alt_rad), -np.cos(az_rad) * np.cos(alt_rad), -np.sin(alt_rad)])
+        
+        # Consistent ray direction calculation matching your original coordinate system
+        sun_vector = np.array([
+            -np.sin(az_rad) * np.cos(alt_rad),
+            -np.cos(az_rad) * np.cos(alt_rad),
+            -np.sin(alt_rad)
+        ])
         
         cos_incidence = np.cos(alt_rad) * np.cos(az_rad)
         if cos_incidence < 0: cos_incidence = 0 
@@ -147,9 +153,9 @@ st.subheader("👁️ Interactive 3D Preview Shadow Analyzer")
 months_ordered = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 t_col1, t_col2 = st.columns(2)
 with t_col1:
-    select_m = st.selectbox("Select Preview Month", months_ordered, index=2) # Default to March as seen in your screenshot
+    select_m = st.selectbox("Select Preview Month", months_ordered, index=5) # June
 with t_col2:
-    select_h = st.slider("Select Preview Hour (24h)", 0, 23, 10) # Default to 10 AM
+    select_h = st.slider("Select Preview Hour (24h)", 0, 23, 12)
 
 filtered_df = df_results[(df_results['Month'] == select_m) & (df_results['Hour'] == select_h)]
 
@@ -157,91 +163,4 @@ if not filtered_df.empty:
     preview_row = filtered_df.iloc[0]
     p_alt = preview_row['Altitude']
     p_az = preview_row['Azimuth'] - (wall_orientation - 180)
-    p_shading = preview_row['Shading_Pct']
-    
-    st.info(f"**Visualizing:** {select_m} at {select_h}:00 | **Calculated Window Shading:** {p_shading:.1f}%")
-
-    p_alt_rad, p_az_rad = np.radians(p_alt), np.radians(p_az)
-    p_sun = np.array([-np.sin(p_az_rad) * np.cos(p_alt_rad), -np.cos(p_az_rad) * np.cos(p_alt_rad), -np.sin(p_alt_rad)])
-
-    win_x_min, win_x_max = -window_width / 2.0, window_width / 2.0
-    win_z_min, win_z_max = 1.0, 1.0 + window_height
-    canopy_z = win_z_max
-    half_cw = canopy_width / 2.0
-
-    preview_shadow = None
-    if p_alt > 0 and p_sun[1] >= 0.001:
-        c1 = np.array([-half_cw, -canopy_depth, canopy_z])
-        c2 = np.array([half_cw, -canopy_depth, canopy_z])
-        c3 = np.array([half_cw, 0.0, canopy_z])
-        c4 = np.array([-half_cw, 0.0, canopy_z])
-        p_shapes = [c1 + (-pt[1] / p_sun[1]) * p_sun for pt in [c1, c2, c3, c4]]
-        s_poly = Polygon([(pt[0], pt[2]) for pt in p_shapes])
-        
-        wall_box = box(-4.0, 0.0, 4.0, 4.0)
-        s_inter = s_poly.intersection(wall_box)
-        if not s_inter.is_empty and s_inter.geom_type == 'Polygon':
-            preview_shadow = list(s_inter.exterior.coords)
-
-    fig3d = go.Figure()
-    
-    # Wall (y = 0)
-    fig3d.add_trace(go.Scatter3d(x=[-4, 4, 4, -4, -4], y=[0, 0, 0, 0, 0], z=[0, 0, 4, 4, 0], mode='lines', surfaceaxis=1, surfacecolor='rgba(230, 230, 230, 0.9)', name="Wall"))
-    
-    # Window (y = -0.01 to stand out from the wall)
-    fig3d.add_trace(go.Scatter3d(x=[win_x_min, win_x_max, win_x_max, win_x_min, win_x_min], y=[-0.01]*5, z=[win_z_min, win_z_min, win_z_max, win_z_max, win_z_min], mode='lines', surfaceaxis=1, surfacecolor='rgba(0, 191, 255, 0.7)', name="Window"))
-    
-    # Canopy
-    fig3d.add_trace(go.Scatter3d(x=[-half_cw, half_cw, half_cw, -half_cw, -half_cw], y=[0, 0, -canopy_depth, -canopy_depth, 0], z=[canopy_z]*5, mode='lines', surfaceaxis=2, surfacecolor='dimgrey', name="Canopy"))
-
-    # Shadow (y = -0.03 to sit distinctly in front of both wall and window planes)
-    if preview_shadow:
-        fig3d.add_trace(go.Scatter3d(
-            x=[pt[0] for pt in preview_shadow], 
-            y=[-0.03] * len(preview_shadow), 
-            z=[pt[1] for pt in preview_shadow], 
-            mode='lines', 
-            surfaceaxis=1, 
-            surfacecolor='rgba(15, 25, 45, 0.6)', 
-            line=dict(color='rgba(0,0,0,0)'),
-            name="Shadow"
-        ))
-
-    fig3d.update_layout(scene=dict(xaxis_range=[-4, 4], yaxis_range=[-3, 3], zaxis_range=[0, 4], aspectmode='manual', aspectratio=dict(x=1, y=0.7, z=0.5), camera=dict(eye=dict(x=1.5, y=-2.2, z=1.5))), margin=dict(l=0, r=0, b=0, t=0), height=450)
-    st.plotly_chart(fig3d, use_container_width=True)
-else:
-    st.warning("No solar data found for this timestamp selection.")
-
-# 5. DISPLAY ANNUAL METRICS & GRAPHS
-st.markdown("---")
-st.subheader("📊 Annual Performance Dashboard")
-
-totals_no_canopy = df_results['Gain_No_Canopy_kWh'].sum()
-totals_with_canopy = df_results['Gain_With_Canopy_kWh'].sum()
-energy_saved = totals_no_canopy - totals_with_canopy
-avg_summer_shading = df_results[df_results['Month'].isin(['June', 'July', 'August'])]['Shading_Pct'].mean()
-
-m1, m2, m3 = st.columns(3)
-m1.metric("Annual Solar Heat Gain (No Canopy)", f"{totals_no_canopy:.0f} kWh")
-m2.metric("Annual Solar Heat Gain (With Canopy)", f"{totals_with_canopy:.0f} kWh", delta=f"-{energy_saved:.0f} kWh Saved")
-m3.metric("Average Summer Shading Exposure", f"{avg_summer_shading:.1f}%")
-
-col1, col2 = st.columns(2)
-
-with col1:
-    st.markdown("**Monthly Heat Gain Summary**")
-    monthly_summary = df_results.groupby('Month')[['Gain_No_Canopy_kWh', 'Gain_With_Canopy_kWh']].sum()
-    monthly_summary = monthly_summary.reindex(months_ordered)
-    
-    fig_bars = go.Figure()
-    fig_bars.add_trace(go.Bar(x=monthly_summary.index, y=monthly_summary['Gain_No_Canopy_kWh'], name='Unprotected', marker_color='crimson'))
-    fig_bars.add_trace(go.Bar(x=monthly_summary.index, y=monthly_summary['Gain_With_Canopy_kWh'], name='With Canopy', marker_color='seagreen'))
-    fig_bars.update_layout(barmode='group', margin=dict(l=20, r=20, b=20, t=20))
-    st.plotly_chart(fig_bars, use_container_width=True)
-
-with col2:
-    st.markdown("**Hourly Shading Heatmap Matrix**")
-    heatmap_data = df_results.pivot_table(index='Hour', columns='Month', values='Shading_Pct', aggfunc='mean')[months_ordered]
-    fig_map = go.Figure(data=go.Heatmap(z=heatmap_data.values, x=heatmap_data.columns, y=heatmap_data.index, colorscale='YlOrRd', colorbar=dict(title='%')))
-    fig_map.update_layout(margin=dict(l=20, r=20, b=20, t=20), yaxis=dict(autorange='reversed'))
-    st.plotly_chart(fig_map, use_container_width=True)
+    p_
