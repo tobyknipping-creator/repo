@@ -13,6 +13,8 @@ st.title("☀️ Solar Canopy & Shading Visualizer")
 
 # Helper function to fetch coordinates from a UK Postcode
 def get_lat_lon(postcode):
+    if not postcode or postcode.strip() == "":
+        return None
     try:
         clean_postcode = postcode.replace(" ", "").strip().upper()
         url = f"https://api.postcodes.io/postcodes/{clean_postcode}"
@@ -38,13 +40,14 @@ if coords:
     
     # Calculate Solar Position via pvlib
     dt = datetime.combine(selected_date, datetime_time(selected_hour, 0))
-    times = pd.DatetimeIndex([dt]).localize('Europe/London')
+    # FIXED: Used tz_localize instead of .localize to fix the AttributeError
+    times = pd.DatetimeIndex([dt]).tz_localize('Europe/London')
     solpos = get_solarposition(times, lat, lon)
     
     altitude = float(solpos['apparent_elevation'].iloc[0])
     azimuth = float(solpos['azimuth'].iloc[0])
 else:
-    st.sidebar.error("Postcode not found. Using default sun position.")
+    st.sidebar.warning("Using default sun position (Noon, Equinox equivalent).")
     altitude, azimuth = 45.0, 180.0
 
 st.sidebar.markdown(f"**Computed Sun Angle:** Altitude: {altitude:.1f}°, Azimuth: {azimuth:.1f}°")
@@ -69,7 +72,7 @@ sun_vector = np.array([-np.sin(az_rad) * np.cos(alt_rad), -np.cos(az_rad) * np.c
 canopy_z = 3.0
 half_cw = canopy_width / 2.0
 
-# If the sun is below the horizon or behind the wall, no shadow is cast
+# Calculate shadow boundaries if the sun is up
 if altitude <= 0 or sun_vector[1] < 0.001:
     shading_pct, shadow_poly_coords = 0.0, None
 else:
@@ -91,16 +94,30 @@ else:
 c1, c2, c3 = st.columns(3)
 c1.metric("Window Shaded", f"{shading_pct:.1f}%")
 c2.metric("Status", "Protected" if shading_pct > 50 else "High Heat Risk" if altitude > 0 else "Nighttime")
-c3.metric("Location Data", f"{postcode_input.upper()}")
+c3.metric("Location Mode", "Postcode Lookup" if coords else "Default Manual")
 
 # 5. 3D GRAPHIC GENERATION
 fig = go.Figure()
 
-# Wall
-fig.add_trace(go.Mesh3d(x=[-4, 4, 4, -4], y=[0, 0, 0, 0], z=[0, 0, 4, 4], color='lightgrey', opacity=0.7, name="Wall"))
+# Wall (Slightly opaque background)
+fig.add_trace(go.Mesh3d(
+    x=[-4, 4, 4, -4], 
+    y=[0, 0, 0, 0], 
+    z=[0, 0, 4, 4], 
+    color='gainsboro', 
+    opacity=0.8, 
+    name="Wall"
+))
 
 # Window
-fig.add_trace(go.Mesh3d(x=[win_x_min, win_x_max, win_x_max, win_x_min], y=[0, 0, 0, 0], z=[win_z_min, win_z_min, win_z_max, win_z_max], color='deepskyblue', opacity=0.8, name="Window"))
+fig.add_trace(go.Mesh3d(
+    x=[win_x_min, win_x_max, win_x_max, win_x_min], 
+    y=[-0.005, -0.005, -0.005, -0.005], # Shifted just slightly forward so it sits cleanly on the wall layer
+    z=[win_z_min, win_z_min, win_z_max, win_z_max], 
+    color='deepskyblue', 
+    opacity=0.9, 
+    name="Window"
+))
 
 # Canopy
 fig.add_trace(go.Scatter3d(
@@ -115,7 +132,7 @@ fig.add_trace(go.Scatter3d(
 if shadow_poly_coords:
     sx = [pt[0] for pt in shadow_poly_coords]
     sz = [pt[1] for pt in shadow_poly_coords]
-    sy = [-0.02] * len(sx)  # Pulled out slightly in front of the wall plane
+    sy = [-0.01] * len(sx)  
     
     fig.add_trace(go.Scatter3d(
         x=sx, y=sy, z=sz,
@@ -123,14 +140,14 @@ if shadow_poly_coords:
         line=dict(color='rgba(10,20,40,0.8)', width=2), name="Shadow"
     ))
 
-# CAMERA ROTATION EYE UPDATE
+# Graph layout configurations
 fig.update_layout(
     scene=dict(
         xaxis_range=[-4, 4], yaxis_range=[-3, 3], zaxis_range=[0, 4],
         aspectmode='manual',
         aspectratio=dict(x=1, y=0.7, z=0.5),
-        # 'eye' dictates camera placement. Changing y to negative values points it directly at the wall face!
-        camera=dict(eye=dict(x=1.25, y=-2.0, z=1.5))
+        # Camera angle specifically pointing towards the front of the wall layer
+        camera=dict(eye=dict(x=1.5, y=-2.2, z=1.5))
     ),
     margin=dict(l=0, r=0, b=0, t=0)
 )
