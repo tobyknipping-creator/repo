@@ -5,7 +5,6 @@ from shapely.geometry import Polygon, box
 import requests
 import pandas as pd
 from datetime import datetime, time as datetime_time
-from pvlib.solarposition import get_solarposition
 from pvlib.location import Location
 
 # 1. APP CONFIGURATION
@@ -32,7 +31,7 @@ st.sidebar.header("📍 Location & Glass Properties")
 postcode_input = st.sidebar.text_input("UK Postcode", "SW1A 1AA")
 shgc = st.sidebar.slider("Glass SHGC (Solar Heat Gain Coeff.)", 0.1, 0.9, 0.6, 0.05)
 
-st.sidebar.header("🧭 Building Orientation")
+st.sidebar.header("Compass Orientation")
 wall_orientation = st.sidebar.slider(
     "Wall Faces Towards (° Azimuth)", 
     0, 360, 180, 5,
@@ -63,7 +62,7 @@ window_height = st.sidebar.slider("Window Height (m)", 0.5, 3.0, 2.0, 0.1)
 coords = get_lat_lon(postcode_input)
 lat, lon = coords if coords else (51.507, -0.127)
 
-# 3. CORE MATH: ANNUAL SIMULATION ENGINE (USING LOCATION)
+# 3. CORE MATH: ANNUAL SIMULATION ENGINE
 @st.cache_data(show_spinner="Simulating solar tracking across 8,760 hours...")
 def run_annual_simulation(lat, lon, w_width, w_height, c_width, c_depth, shgc_val, wall_ori):
     win_x_min, win_x_max = -w_width / 2.0, w_width / 2.0
@@ -76,7 +75,6 @@ def run_annual_simulation(lat, lon, w_width, w_height, c_width, c_depth, shgc_va
     
     times = pd.date_range(start='2026-01-01 00:00', end='2026-12-31 23:00', freq='h', tz='Europe/London')
     
-    # Clean implementation using pvlib Location object
     loc_obj = Location(latitude=lat, longitude=lon, tz='Europe/London')
     solpos = loc_obj.get_solarposition(times)
     cs_irrad = loc_obj.get_clearsky(times)
@@ -135,19 +133,21 @@ def run_annual_simulation(lat, lon, w_width, w_height, c_width, c_depth, shgc_va
     df = pd.DataFrame({
         'Time': times, 'Month': times.month_name(), 'Hour': times.hour,
         'Shading_Pct': shaded_percentages,
-        'Gain_No_Canopy_kWh': solar_gains_no_canopy, 'Gain_With_Canopy_kWh': solar_gains_with_canopy
+        'Gain_No_Canopy_kWh': solar_gains_no_canopy, 'Gain_With_Canopy_kWh': solar_gains_with_canopy,
+        'Altitude': altitudes, 'Azimuth': azimuths
     })
-    return df, altitudes, azimuths
+    return df
 
 # Run simulation calculations
-df_results, annual_alts, annual_azs = run_annual_simulation(lat, lon, window_width, window_height, canopy_width, canopy_depth, shgc, wall_orientation)
+df_results = run_annual_simulation(lat, lon, window_width, window_height, canopy_width, canopy_depth, shgc, wall_orientation)
 
 # 4. SPLIT LAYOUT: LIVE 3D VISUALIZER (TOP) & ANNUAL GRAPHS (BOTTOM)
 st.subheader("👁️ Live 3D Preview (Mid-day Summer Solstice Snapshot)")
 
-preview_idx = 4116 
-p_alt = annual_alts[preview_idx]
-p_az = annual_azs[preview_idx] - (wall_orientation - 180)
+# Safely extract values from the dataframe for the 3D snapshot
+preview_row = df_results.iloc[4116] 
+p_alt = preview_row['Altitude']
+p_az = preview_row['Azimuth'] - (wall_orientation - 180)
 
 p_alt_rad, p_az_rad = np.radians(p_alt), np.radians(p_az)
 p_sun = np.array([-np.sin(p_az_rad) * np.cos(p_alt_rad), -np.cos(p_az_rad) * np.cos(p_alt_rad), -np.sin(p_alt_rad)])
