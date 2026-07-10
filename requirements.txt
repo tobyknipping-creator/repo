@@ -2,3 +2,5 @@ streamlit>=1.59.0
 numpy>=1.26.0
 plotly>=5.22.0
 shapely>=2.0.0
+pvlib
+requests
