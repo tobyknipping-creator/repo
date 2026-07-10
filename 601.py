@@ -18,7 +18,6 @@ def get_lat_lon(postcode):
     try:
         clean_postcode = postcode.replace(" ", "").strip().upper()
         url = f"https://api.postcodes.io/postcodes/{clean_postcode}"
-        # FIXED: url argument restored
         response = requests.get(url, timeout=5)
         if response.status_code == 200:
             data = response.json()
@@ -192,78 +191,4 @@ if not filtered_df.empty:
         
         wall_box = box(-4.0, 0.0, 4.0, 4.0)
         s_inter = s_poly.intersection(wall_box)
-        if not s_inter.is_empty and s_inter.geom_type == 'Polygon':
-            preview_shadow = list(s_inter.exterior.coords)
-
-    fig3d = go.Figure()
-    
-    # Wall
-    fig3d.add_trace(go.Scatter3d(x=[-4, 4, 4, -4, -4], y=[0]*5, z=[0, 0, 4, 4, 0], mode='lines', surfaceaxis=1, surfacecolor='rgba(220, 220, 220, 0.9)', name="Wall"))
-    
-    # Window
-    fig3d.add_trace(go.Scatter3d(x=[win_x_min, win_x_max, win_x_max, win_x_min, win_x_min], y=[-0.01]*5, z=[win_z_min, win_z_min, win_z_max, win_z_max, win_z_min], mode='lines', surfaceaxis=1, surfacecolor='rgba(0, 191, 255, 0.7)', name="Window"))
-    
-    # Canopy
-    fig3d.add_trace(go.Scatter3d(x=[-half_cw, half_cw, half_cw, -half_cw, -half_cw], y=[0, 0, -canopy_depth, -canopy_depth, 0], z=[canopy_z]*5, mode='lines', surfaceaxis=2, surfacecolor='dimgrey', name="Canopy"))
-
-    # Shadow
-    if preview_shadow:
-        fig3d.add_trace(go.Scatter3d(
-            x=[pt[0] for pt in preview_shadow], 
-            y=[-0.02] * len(preview_shadow), 
-            z=[pt[1] for pt in preview_shadow], 
-            mode='lines', 
-            surfaceaxis=1, 
-            surfacecolor='rgba(40, 45, 55, 0.75)', 
-            line=dict(color='rgba(0,0,0,0)'),
-            name="Shadow"
-        ))
-
-    fig3d.update_layout(
-        scene=dict(
-            xaxis_range=[-4, 4], 
-            yaxis_range=[-3, 3], 
-            zaxis_range=[0, 4], 
-            aspectmode='manual', 
-            aspectratio=dict(x=1, y=0.7, z=0.5), 
-            camera=dict(eye=dict(x=1.5, y=-2.2, z=1.5))
-        ), 
-        margin=dict(l=0, r=0, b=0, t=0), 
-        height=450
-    )
-    st.plotly_chart(fig3d, use_container_width=True)
-else:
-    st.warning("No solar data found for this timestamp selection.")
-
-# 5. DISPLAY ANNUAL METRICS & GRAPHS
-st.markdown("---")
-st.subheader("📊 Annual Performance Dashboard")
-
-totals_no_canopy = df_results['Gain_No_Canopy_kWh'].sum()
-totals_with_canopy = df_results['Gain_With_Canopy_kWh'].sum()
-energy_saved = totals_no_canopy - totals_with_canopy
-avg_summer_shading = df_results[df_results['Month'].isin(['June', 'July', 'August'])]['Shading_Pct'].mean()
-
-m1, m2, m3 = st.columns(3)
-m1.metric("Annual Solar Heat Gain (No Canopy)", f"{totals_no_canopy:.0f} kWh")
-m2.metric("Annual Solar Heat Gain (With Canopy)", f"{totals_with_canopy:.0f} kWh", delta=f"-{energy_saved:.0f} kWh Saved")
-m3.metric("Average Summer Shading Exposure", f"{avg_summer_shading:.1f}%")
-
-col1, col2 = st.columns(2)
-
-with col1:
-    st.markdown("**Monthly Heat Gain Summary**")
-    monthly_summary = df_results.groupby('Month')[['Gain_No_Canopy_kWh', 'Gain_With_Canopy_kWh']].sum()
-    monthly_summary = monthly_summary.reindex(months_ordered)
-    
-    fig_bars = go.Figure()
-    fig_bars.add_trace(go.Bar(x=monthly_summary.index, y=monthly_summary['Gain_No_Canopy_kWh'], name='Unprotected', marker_color='crimson'))
-    fig_bars.add_trace(go.Bar(x=monthly_summary.index, y=monthly_summary['Gain_With_Canopy_kWh'], name='With Canopy', marker_color='seagreen'))
-    fig_bars.update_layout(barmode='group', margin=dict(l=20, r=20, b=20, t=20))
-    st.plotly_chart(fig_bars, use_container_width=True)
-
-with col2:
-    st.markdown("**Hourly Shading Heatmap Matrix**")
-    heatmap_data = df_results.pivot_table(index='Hour', columns='Month', values='Shading_Pct', aggfunc='mean')[months_ordered]
-    fig_map = go.Figure(data=go.Heatmap(z=heatmap_data.values, x=heatmap_data.columns, y=heatmap_data.index, colorscale='YlOrRd', colorbar=dict(title='%')))
-    fig_map.update_layout(margin=dict(l=20,
+        if not s_inter.is_empty and s_inter.
